@@ -1,0 +1,52 @@
+# Android / Gradle generated files
+.gradle/
+.kotlin/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.hprof
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.serena/
+
+# Signing files and local secrets
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+keystore.properties
+signing.properties
+.env
+.env.*
+!.env.example
+.envrc
+
+# Python helper-script caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local handoff notes and EEG collection exports
+/docs/rehab-handoff/
+*.npz
+
+# OS and local diagnostic files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+/current_phone_screen.png
+/codex_window.xml
