@@ -25,6 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.BackHandler
+import com.example.input_ds.model.InteractionRules
+import com.example.input_ds.ui.components.InputContextBoundary
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +58,15 @@ fun SnakeClimbScreen(
     onAction: (SnakeAction) -> Unit,
     onBack: () -> Unit
 ) {
+    InputContextBoundary(state.exitConfirmation, state.gameOver)
+    fun requestBack() {
+        when {
+            state.exitConfirmation -> onAction(SnakeAction.CANCEL_EXIT)
+            state.gameOver -> onBack()
+            else -> onAction(SnakeAction.REQUEST_EXIT)
+        }
+    }
+    BackHandler { requestBack() }
     LaunchedEffect(
         state.step,
         state.gameOver,
@@ -64,7 +76,7 @@ fun SnakeClimbScreen(
         state.exitRequested,
         moveIntervalMs
     ) {
-        if (!state.exitRequested) {
+        if (!state.exitRequested && !state.exitConfirmation && !state.gameOver) {
             delay(moveIntervalMs.coerceIn(1_100L, 3_000L))
             onAction(SnakeAction.TICK)
         }
@@ -93,7 +105,7 @@ fun SnakeClimbScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                TextButton(onClick = onBack) { Text("返回首页") }
+                TextButton(onClick = ::requestBack) { Text("返回娱乐") }
             }
 
             Box(
@@ -401,6 +413,7 @@ private fun GameInstructions(modifier: Modifier = Modifier) {
 private fun ExitConfirmation(state: SnakeClimbState, onAction: (SnakeAction) -> Unit) {
     PromptOverlay(onOutsideClick = { onAction(SnakeAction.CANCEL_EXIT) }) {
         Text("确定要退出向上贪吃蛇吗？", style = MaterialTheme.typography.headlineSmall)
+        Text(InteractionRules.CONFIRM_HINT)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -415,6 +428,7 @@ private fun ExitConfirmation(state: SnakeClimbState, onAction: (SnakeAction) -> 
 private fun GameOverDialog(state: SnakeClimbState, onAction: (SnakeAction) -> Unit) {
     PromptOverlay(onOutsideClick = {}) {
         Text("游戏结束", style = MaterialTheme.typography.headlineSmall)
+        Text("左看重新开始，右看返回娱乐，咬牙确认")
         Text(state.message)
         Text("共吃到 ${state.applesEaten} 个苹果，向上前进 ${state.head.row} 行。")
         Row(

@@ -86,6 +86,22 @@ class InputMethodViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** Back closes the current selection level before leaving; output is retained. */
+    fun navigateBack(): Boolean {
+        val current = _state.value
+        if (current.phase == InputPhase.LEVEL_1_SCANNING) {
+            if (!hasActivePinyinInput(current)) return false
+            returnToLevel1()
+        } else if (current.phase == InputPhase.LEVEL_2_LETTER_SELECT && current.isCharFocused) {
+            stopCharScanning()
+            _state.value = current.copy(isCharFocused = false, highlightedCharIndex = 0)
+            startPinyinScanning()
+        } else {
+            returnToLevel1()
+        }
+        return true
+    }
+
     // ==================== Level 1 ====================
 
     private fun handleLevel1Signal(signal: ControlSignal) {

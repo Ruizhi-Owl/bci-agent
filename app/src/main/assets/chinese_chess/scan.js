@@ -39,8 +39,8 @@ export function operationScanCandidates(sourcePhase, direction) {
 /** Pure cursor state used by the timed EEG scanner and its unit tests. */
 export class ScanCursor {
     constructor() {
-        // -1 is the default: board columns scan from the player's right to left.
-        this.direction = -1;
+        // Menus start left-to-right; gaze changes only the scan direction.
+        this.direction = 1;
         this.phase = ScanPhase.PAUSED;
         this.candidates = [];
         this.index = -1;
@@ -57,7 +57,7 @@ export class ScanCursor {
         const preferredIndex = preferredKind === null
             ? -1
             : this.candidates.findIndex(item => item.kind === preferredKind);
-        this.index = preferredIndex >= 0
+        this.index = phase === ScanPhase.CONFIRM ? 0 : preferredIndex >= 0
             ? preferredIndex
             : this.direction < 0 ? this.candidates.length - 1 : 0;
         return this.current();
@@ -67,11 +67,15 @@ export class ScanCursor {
         // 视线方向与棋盘上的视觉移动方向保持一致。
         if (action === 'look_left') this.direction = -1;
         if (action === 'look_right') this.direction = 1;
+        if (this.phase === ScanPhase.CONFIRM && /^(look_left|look_right)$/.test(action)) {
+            this.index = action === 'look_left' ? 0 : this.candidates.length - 1;
+        }
         return this.direction;
     }
 
     advance() {
         if (this.candidates.length === 0) return null;
+        if (this.phase === ScanPhase.CONFIRM) return this.current();
         this.index = (this.index + this.direction + this.candidates.length) % this.candidates.length;
         return this.current();
     }
@@ -83,6 +87,7 @@ export class ScanCursor {
     snapshot() {
         return {
             phase: this.phase,
+            direction: this.direction,
             candidates: [...this.candidates],
             index: this.index
         };
@@ -91,6 +96,7 @@ export class ScanCursor {
     restore(snapshot) {
         if (!snapshot) return null;
         this.phase = snapshot.phase;
+        this.direction = snapshot.direction < 0 ? -1 : 1;
         this.candidates = [...snapshot.candidates];
         this.index = Math.max(-1, Math.min(snapshot.index, this.candidates.length - 1));
         return this.current();

@@ -1,5 +1,7 @@
 package com.example.input_ds.ui.mahjong
 
+import androidx.activity.compose.BackHandler
+import com.example.input_ds.ui.components.LocalInputContextChanged
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -40,6 +42,15 @@ fun MahjongScreen(scanIntervalMs: Long, onBack: () -> Unit) {
     var activeWebView by remember { mutableStateOf<WebView?>(null) }
     var activeSignalSink by remember { mutableStateOf<MahjongWebSignalSink?>(null) }
     val currentOnBack by rememberUpdatedState(onBack)
+    val currentOnContextChanged by rememberUpdatedState(LocalInputContextChanged.current)
+    BackHandler {
+        val web = activeWebView
+        if (web == null) currentOnBack()
+        else web.evaluateJavascript(
+            "(() => { const game = window.inputDsMahjong; if (!game?.requestBack) return false; game.requestBack(); return true; })()"
+        ) { handled -> if (activeWebView === web && handled != "true") currentOnBack() }
+    }
+
 
     DisposableEffect(Unit) {
         onDispose {
@@ -69,7 +80,9 @@ fun MahjongScreen(scanIntervalMs: Long, onBack: () -> Unit) {
                     activeSignalSink = signalSink
                     MahjongInputBus.attach(signalSink)
                     addJavascriptInterface(
-                        MahjongHostBridge(this) { currentOnBack() },
+                        MahjongHostBridge(this,
+                            { if (activeWebView === this) currentOnBack() },
+                            { if (activeWebView === this) currentOnContextChanged() }),
                         "InputDsMahjongHost"
                     )
                     setBackgroundColor(Color.rgb(8, 116, 62))
@@ -168,7 +181,9 @@ private class MahjongWebSignalSink(
     }
 
     fun setScanInterval(value: Long) {
-        scanIntervalMs = value.coerceIn(1_100L, 3_000L)
+        val validated = value.coerceIn(1_100L, 3_000L)
+        if (validated == scanIntervalMs) return
+        scanIntervalMs = validated
         if (pageReady) sendScanInterval()
     }
 
@@ -200,8 +215,14 @@ private class MahjongWebSignalSink(
 
 private class MahjongHostBridge(
     private val webView: WebView,
-    private val onRequestExit: () -> Unit
+    private val onRequestExit: () -> Unit,
+    private val onInputContextChanged: () -> Unit
 ) {
+    @JavascriptInterface
+    fun inputContextChanged() {
+        webView.post { onInputContextChanged() }
+    }
+
     @JavascriptInterface
     fun requestExit() {
         webView.post { onRequestExit() }

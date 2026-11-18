@@ -3,6 +3,8 @@ package com.example.input_ds.ui.music
 import android.content.Context
 import android.media.AudioManager
 import androidx.activity.compose.BackHandler
+import com.example.input_ds.ui.components.InputContextBoundary
+import com.example.input_ds.model.InteractionRules
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -132,15 +134,16 @@ fun MusicScreen(scanIntervalMs: Long, onBack: () -> Unit) {
     var shuffleOrder by remember { mutableStateOf(emptyList<String>()) }
     var focusMode by remember { mutableStateOf(MusicFocusMode.CONTROLS) }
     var controlIndex by remember { mutableIntStateOf(CONTROL_PLAY_PAUSE) }
+    var controlDirection by remember { mutableIntStateOf(1) }
     var playlistIndex by remember { mutableIntStateOf(0) }
     var playlistDirection by remember { mutableIntStateOf(1) }
     var volumeIndex by remember { mutableIntStateOf(0) }
+    var volumeDirection by remember { mutableIntStateOf(1) }
     var settingsIndex by remember { mutableIntStateOf(0) }
     var settingsDirection by remember { mutableIntStateOf(1) }
     var deleteIndex by remember { mutableIntStateOf(0) }
     var deleteDirection by remember { mutableIntStateOf(1) }
     var confirmIndex by remember { mutableIntStateOf(0) }
-    var confirmDirection by remember { mutableIntStateOf(1) }
     var pendingDelete by remember { mutableStateOf<MusicTrack?>(null) }
     var importing by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -222,7 +225,6 @@ fun MusicScreen(scanIntervalMs: Long, onBack: () -> Unit) {
     fun requestDelete(track: MusicTrack) {
         pendingDelete = track
         confirmIndex = 0
-        confirmDirection = 1
         focusMode = MusicFocusMode.DELETE_CONFIRM
     }
 
@@ -346,26 +348,24 @@ fun MusicScreen(scanIntervalMs: Long, onBack: () -> Unit) {
     val signalHandler = rememberUpdatedState<(ControlSignal) -> Unit> { signal ->
         when (focusMode) {
             MusicFocusMode.CONTROLS -> when (signal) {
-                ControlSignal.LEFT_LOOK -> controlIndex = (controlIndex - 1 + CONTROL_LABELS.size) % CONTROL_LABELS.size
-                ControlSignal.RIGHT_LOOK -> controlIndex = (controlIndex + 1) % CONTROL_LABELS.size
+                ControlSignal.LEFT_LOOK -> controlDirection = -1
+                ControlSignal.RIGHT_LOOK -> controlDirection = 1
                 ControlSignal.BITE -> executeControl(controlIndex)
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
             MusicFocusMode.PLAYLIST -> when (signal) {
                 ControlSignal.LEFT_LOOK -> {
                     playlistDirection = -1
-                    if (tracks.isNotEmpty()) playlistIndex = (playlistIndex - 1 + tracks.size) % tracks.size
                 }
                 ControlSignal.RIGHT_LOOK -> {
                     playlistDirection = 1
-                    if (tracks.isNotEmpty()) playlistIndex = (playlistIndex + 1) % tracks.size
                 }
                 ControlSignal.BITE -> playTrackAt(playlistIndex)
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
             MusicFocusMode.VOLUME -> when (signal) {
-                ControlSignal.LEFT_LOOK -> volumeIndex = (volumeIndex - 1 + VOLUME_LABELS.size) % VOLUME_LABELS.size
-                ControlSignal.RIGHT_LOOK -> volumeIndex = (volumeIndex + 1) % VOLUME_LABELS.size
+                ControlSignal.LEFT_LOOK -> volumeDirection = -1
+                ControlSignal.RIGHT_LOOK -> volumeDirection = 1
                 ControlSignal.BITE -> executeVolume(volumeIndex)
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
@@ -385,15 +385,9 @@ fun MusicScreen(scanIntervalMs: Long, onBack: () -> Unit) {
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
             MusicFocusMode.DELETE_CONFIRM -> when (signal) {
-                ControlSignal.LEFT_LOOK -> {
-                    confirmDirection = -1
-                    confirmIndex = (confirmIndex + 1) % 2
-                }
-                ControlSignal.RIGHT_LOOK -> {
-                    confirmDirection = 1
-                    confirmIndex = (confirmIndex + 1) % 2
-                }
-                ControlSignal.BITE -> if (confirmIndex == 0) performDelete() else returnFromOverlay()
+                ControlSignal.LEFT_LOOK, ControlSignal.RIGHT_LOOK ->
+                    confirmIndex = InteractionRules.confirmationIndex(signal, confirmIndex)
+                ControlSignal.BITE -> if (confirmIndex == 1) performDelete() else returnFromOverlay()
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
         }
@@ -466,13 +460,18 @@ fun MusicScreen(scanIntervalMs: Long, onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(focusMode, confirmIndex, confirmDirection, scanDelay) {
-        if (focusMode == MusicFocusMode.DELETE_CONFIRM) {
+    LaunchedEffect(focusMode, controlIndex, controlDirection, volumeIndex, volumeDirection, scanDelay) {
+        if (focusMode == MusicFocusMode.CONTROLS || focusMode == MusicFocusMode.VOLUME) {
             delay(scanDelay)
-            confirmIndex = (confirmIndex + confirmDirection + 2) % 2
+            if (focusMode == MusicFocusMode.CONTROLS) {
+                controlIndex = (controlIndex + controlDirection + CONTROL_LABELS.size) % CONTROL_LABELS.size
+            } else {
+                volumeIndex = (volumeIndex + volumeDirection + VOLUME_LABELS.size) % VOLUME_LABELS.size
+            }
         }
     }
 
+    InputContextBoundary(focusMode)
     BackHandler { returnFromOverlay() }
 
     Box(Modifier.fillMaxSize().auroraBackground()) {
@@ -966,9 +965,10 @@ private fun DeleteConfirmOverlay(
             textAlign = TextAlign.Center
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            FocusOptionButton("确定删除", selectedIndex == 0, onConfirm, Modifier.weight(1f), danger = true)
-            FocusOptionButton("返回", selectedIndex == 1, onCancel, Modifier.weight(1f))
+            FocusOptionButton("取消", selectedIndex == 0, onCancel, Modifier.weight(1f))
+            FocusOptionButton("确定删除", selectedIndex == 1, onConfirm, Modifier.weight(1f), danger = true)
         }
+        Text(InteractionRules.CONFIRM_HINT)
     }
 }
 

@@ -1,4 +1,5 @@
 package com.example.input_ds.ui.settings
+import com.example.input_ds.ui.components.InputContextBoundary
 
 import android.app.Activity
 import android.content.Context
@@ -7,6 +8,10 @@ import android.media.AudioManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,7 +80,8 @@ private enum class PatientSetting(
     VOLUME("调整声音大小", "调节整个 APP 的媒体音量", "♫"),
     BRIGHTNESS("调整屏幕亮度", "调节本 APP 使用期间的屏幕亮度", "☀"),
     FLOATING_BALL("隐藏/显示悬浮球", "隐藏或重新显示测试悬浮球", "●"),
-    BACK("返回主页面", "返回主界面继续选择功能", "←")
+    SCAN_SPEED("扫描速度校准", "通过目标选择练习推荐扫描速度", "↻"),
+    BACK("返回主页", "返回主界面继续选择功能", "←")
 }
 
 @Composable
@@ -85,6 +91,7 @@ fun AppSettingsScreen(
     headsetControlEnabled: Boolean,
     onFloatingBallVisibleChange: (Boolean) -> Unit,
     onHeadsetControlEnabledChange: (Boolean) -> Unit,
+    onScanCalibration: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -98,8 +105,10 @@ fun AppSettingsScreen(
     val currentOnBack by rememberUpdatedState(onBack)
     val currentOnFloatingBallVisibleChange by rememberUpdatedState(onFloatingBallVisibleChange)
     val currentOnHeadsetControlEnabledChange by rememberUpdatedState(onHeadsetControlEnabledChange)
+    val currentOnScanCalibration by rememberUpdatedState(onScanCalibration)
 
     var focusMode by remember { mutableStateOf(SettingsFocusMode.MENU) }
+    InputContextBoundary(focusMode)
     var menuIndex by remember { mutableIntStateOf(0) }
     var optionIndex by remember { mutableIntStateOf(0) }
     var scanDirection by remember { mutableIntStateOf(1) }
@@ -139,6 +148,10 @@ fun AppSettingsScreen(
             PatientSetting.VOLUME -> SettingsFocusMode.VOLUME
             PatientSetting.BRIGHTNESS -> SettingsFocusMode.BRIGHTNESS
             PatientSetting.FLOATING_BALL -> SettingsFocusMode.FLOATING_BALL
+            PatientSetting.SCAN_SPEED -> {
+                currentOnScanCalibration()
+                SettingsFocusMode.MENU
+            }
             PatientSetting.BACK -> {
                 currentOnBack()
                 SettingsFocusMode.MENU
@@ -225,7 +238,7 @@ fun AppSettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("设置", style = MaterialTheme.typography.headlineMedium)
+                    Text("应用设置", style = MaterialTheme.typography.headlineMedium)
                     Text(
                         "左侧可用耳机操作 · 右侧仅允许医护人员触摸",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -244,6 +257,8 @@ fun AppSettingsScreen(
                         "光标自动跳转 ${if (scanDirection < 0) "←" else "→"} · 左看/右看改变方向 · 咬牙进入",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     PatientSetting.entries.forEachIndexed { index, setting ->
                         PatientSettingCard(
                             setting = setting,
@@ -251,6 +266,7 @@ fun AppSettingsScreen(
                                 PatientSetting.VOLUME -> "$volume / $maxVolume"
                                 PatientSetting.BRIGHTNESS -> "${(brightness * 100).roundToInt()}%"
                                 PatientSetting.FLOATING_BALL -> if (floatingBallVisible) "当前显示" else "当前隐藏"
+                                PatientSetting.SCAN_SPEED -> "${scanDelay} 毫秒"
                                 PatientSetting.BACK -> ""
                             },
                             selected = focusMode == SettingsFocusMode.MENU && menuIndex == index,
@@ -259,6 +275,7 @@ fun AppSettingsScreen(
                                 open(setting)
                             }
                         )
+                    }
                     }
                 }
 
@@ -337,10 +354,14 @@ private fun PatientSettingCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(selected) {
+        if (selected) bringIntoViewRequester.bringIntoView()
+    }
     SelectableGlassPanel(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(82.dp),
+        modifier = Modifier.fillMaxWidth().height(82.dp).bringIntoViewRequester(bringIntoViewRequester),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(

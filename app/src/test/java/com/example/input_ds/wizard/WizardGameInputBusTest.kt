@@ -14,9 +14,12 @@ class WizardGameInputBusTest {
 
         assertFalse(WizardGameInputBus.dispatch(ControlSignal.LEFT_LOOK))
         WizardGameInputBus.attach(sink)
+        assertFalse(WizardGameInputBus.dispatch(ControlSignal.RIGHT_LOOK))
+        WizardGameInputBus.setForeground(true)
         assertTrue(WizardGameInputBus.dispatch(ControlSignal.RIGHT_LOOK))
         assertEquals(listOf(ControlSignal.RIGHT_LOOK), received)
         WizardGameInputBus.detach(sink)
+        WizardGameInputBus.setForeground(false)
         assertFalse(WizardGameInputBus.dispatch(ControlSignal.BITE))
     }
 }

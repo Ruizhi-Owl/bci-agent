@@ -285,10 +285,14 @@ class NaoyunBleManager(val context: Context) {
             }
             reconnectAttempts = 0
             streamRecoveryAttempts = 0
-            _connectedDevice.value = ConnectedDevice(
-                device.name ?: device.address,
-                device.address
-            )
+            _connectedDevice.value = try {
+                ConnectedDevice(device.name ?: device.address, device.address)
+            } catch (error: SecurityException) {
+                _state.value = State.ERROR
+                _deviceInfo.value = "蓝牙权限已撤销，请在设备与模型中重新授权"
+                Log.w("NaoyunBle", "Bluetooth permission revoked during recovery", error)
+                return@post
+            }
             _state.value = State.RECOVERING
             _deviceInfo.value = "采集等待中，正在重新连接耳机…"
             connectInternal(device)

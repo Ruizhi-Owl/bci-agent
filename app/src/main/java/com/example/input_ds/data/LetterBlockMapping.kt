@@ -42,12 +42,12 @@ object LetterBlockMapping {
         7 to "PQRS",
         8 to "TUV",
         9 to "WXYZ",
-        SEND_BLOCK to "发送",
+        SEND_BLOCK to "完成",
         DELETE_BLOCK to "删除"
     )
 
     /** 左侧五个块 */
-    val LEFT_BLOCKS = listOf(2, 3, 4, 5, SEND_BLOCK)  // ABC, DEF, GHI, JKL, 发送
+    val LEFT_BLOCKS = listOf(2, 3, 4, 5, SEND_BLOCK)  // ABC, DEF, GHI, JKL, 完成本轮输入
 
     /** 右侧五个块 */
     val RIGHT_BLOCKS = listOf(6, 7, 8, 9, DELETE_BLOCK)  // MNO, PQRS, TUV, WXYZ, 删除

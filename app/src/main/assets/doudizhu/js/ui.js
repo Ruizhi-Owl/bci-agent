@@ -65,12 +65,14 @@ function bciViewSignature(v) {
 
 function bciSetPhase(phase, candidates, orientation, rememberParent) {
   if (rememberParent) BciScan.stack.push(BciScan.cursor.snapshot());
+  window.InputDsDoudizhuHost?.inputContextChanged?.();
   BciScan.cursor.setPhase(phase, candidates, orientation || 'horizontal');
   bciRestartTimer();
   bciRender();
 }
 
 function bciRestore(snapshot) {
+  window.InputDsDoudizhuHost?.inputContextChanged?.();
   BciScan.cursor.restore(snapshot);
   bciRestartTimer();
   bciRender();
@@ -79,7 +81,7 @@ function bciRestore(snapshot) {
 function bciRestartTimer() {
   if (BciScan.timer) clearInterval(BciScan.timer);
   BciScan.timer = null;
-  if (!BciScan.cursor.candidates.length) return;
+  if (!BciScan.cursor.candidates.length || ['confirm', 'confirm_inline'].includes(BciScan.cursor.phase)) return;
   BciScan.timer = setInterval(() => {
     BciScan.cursor.advance();
     bciRender();
@@ -89,7 +91,9 @@ function bciRestartTimer() {
 function bciSetInterval(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return;
-  BciScan.intervalMs = Math.max(1100, Math.min(3000, Math.round(parsed)));
+  const validated = Math.max(1100, Math.min(3000, Math.round(parsed)));
+  if (validated === BciScan.intervalMs) return;
+  BciScan.intervalMs = validated;
   bciRestartTimer();
 }
 
@@ -238,6 +242,7 @@ function bciRender() {
 
 function bciWait(phase) {
   BciScan.stack = [];
+  window.InputDsDoudizhuHost?.inputContextChanged?.();
   BciScan.cursor.setPhase(phase || 'waiting', [], 'horizontal');
   bciRestartTimer();
   bciRender();
@@ -433,8 +438,8 @@ function bciShowConfirmation(action) {
   if (action.kind === 'play' || action.kind === 'pass') {
     $('#bci-confirm-modal').classList.add('hidden');
     bciSetPhase('confirm_inline', [
+      { kind: 'cancel', label: '取消', style: 'cancel-inline' },
       { kind: 'confirm', label: action.kind === 'play' ? '确定出牌' : '确定不出', style: 'confirm-inline' },
-      { kind: 'cancel', label: '返回选择', style: 'cancel-inline' },
     ], 'horizontal', false);
     return;
   }
@@ -442,13 +447,13 @@ function bciShowConfirmation(action) {
   $('#bci-confirm-title').textContent = title;
   {
     const actionText = action.kind === 'pass' ? '不出'
-      : action.kind === 'restart' ? '重新发牌' : '返回 APP 首页';
+      : action.kind === 'restart' ? '重新发牌' : '返回娱乐';
     $('#bci-confirm-cards').innerHTML = `<strong>${actionText}</strong>`;
   }
   $('#bci-confirm-modal').classList.remove('hidden');
   bciSetPhase('confirm', [
+    { kind: 'cancel', label: '取消' },
     { kind: 'confirm', label: '确定' },
-    { kind: 'cancel', label: '返回选择' },
   ], 'horizontal', false);
 }
 
@@ -504,6 +509,7 @@ function bciConfirmPending() {
   BciScan.pendingAction = null;
   BciScan.confirmReturn = null;
   $('#bci-confirm-modal').classList.add('hidden');
+  window.InputDsDoudizhuHost?.inputContextChanged?.();
   BciScan.cursor.setPhase('waiting', [], 'horizontal');
   BciScan.viewSignature = null;
   bciRestartTimer();
@@ -1469,7 +1475,7 @@ function requestAppExit() {
     window.InputDsDoudizhuHost.requestExit();
     return;
   }
-  toast('APP 中点击此项会返回首页；浏览器测试请直接关闭页面');
+  toast('APP 中点击此项会返回娱乐；浏览器测试请直接关闭页面');
 }
 
 function setCombinedSound(enabled) {
@@ -1560,6 +1566,12 @@ function boot() {
   window.addEventListener('pagehide', farewell);
 
   window.inputDsDoudizhu = {
+    requestBack: () => {
+      if (['confirm', 'confirm_inline'].includes(BciScan.cursor.phase)) bciCancelConfirmation();
+      else if (BciScan.cursor.phase === 'settings') bciReturnFromSettings();
+      else if (BciScan.stack.length) bciBack();
+      else bciShowConfirmation({ kind: 'exit' });
+    },
     handleAction: handleDoudizhuBciAction,
     setScanInterval: bciSetInterval,
   };

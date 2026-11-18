@@ -162,11 +162,15 @@ class DdzScanCursor {
       if (action === 'look_left') this.direction = -1;
       if (action === 'look_right') this.direction = 1;
     }
+    if (['confirm', 'confirm_inline'].includes(this.phase) && /^(look_left|look_right)$/.test(action)) {
+      this.index = action === 'look_left' ? 0 : this.candidates.length - 1;
+    }
     return this.direction;
   }
 
   advance() {
     if (!this.candidates.length) return null;
+    if (['confirm', 'confirm_inline'].includes(this.phase)) return this.current();
     this.index = (this.index + this.direction + this.candidates.length) % this.candidates.length;
     return this.current();
   }

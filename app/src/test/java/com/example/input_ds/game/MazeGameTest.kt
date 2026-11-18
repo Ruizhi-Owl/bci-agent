@@ -106,6 +106,26 @@ class MazeGameTest {
         assertTrue(confirmed.exitConfirmed)
     }
 
+    @Test
+    fun returnRequestDoesNotMovePlayerAndDefaultsToCancel() {
+        val initial = MazeGame.create(MazeProtocol.FOUR_CLASS, random = Random(12))
+        val prompted = MazeGame.applyAction(initial, MazeAction.REQUEST_EXIT)
+        assertEquals(initial.player, prompted.player)
+        assertEquals(MazeExitChoice.CANCEL, prompted.exitSelection)
+        val cancelled = MazeGame.applyAction(prompted, MazeAction.BITE)
+        assertFalse(cancelled.exitConfirmed)
+        assertFalse(cancelled.exitDialogVisible)
+    }
+
+    @Test
+    fun completionWaitsForReplayOrExitInsteadOfAutomaticallyRestarting() {
+        val completed = MazeGame.create(MazeProtocol.FOUR_CLASS, random = Random(13)).copy(completed = true)
+        assertFalse(completed.restartRequested)
+        assertTrue(MazeGame.applyAction(completed, MazeAction.BITE).restartRequested)
+        val exit = MazeGame.applyAction(completed, MazeAction.LOOK_RIGHT)
+        assertTrue(MazeGame.applyAction(exit, MazeAction.BITE).exitConfirmed)
+    }
+
     private fun simpleState(protocol: MazeProtocol): MazeState {
         val walkable = setOf(
             MazePosition(0, 2),

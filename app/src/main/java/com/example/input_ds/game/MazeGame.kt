@@ -10,6 +10,7 @@ enum class MazeProtocol {
 }
 
 enum class MazeAction {
+    REQUEST_EXIT,
     REST,
     BITE,
     LOOK_LEFT,
@@ -24,6 +25,7 @@ enum class MazeExitChoice {
 }
 
 data class MazePosition(val column: Int, val row: Int)
+enum class MazeEndChoice { RESTART, EXIT }
 
 data class MazeState(
     val protocol: MazeProtocol,
@@ -37,6 +39,8 @@ data class MazeState(
     val player: MazePosition = start,
     val barriers: Map<MazePosition, MazeAction> = emptyMap(),
     val completed: Boolean = false,
+    val endSelection: MazeEndChoice = MazeEndChoice.RESTART,
+    val restartRequested: Boolean = false,
     val exitDialogVisible: Boolean = false,
     val exitSelection: MazeExitChoice = MazeExitChoice.CANCEL,
     val exitConfirmed: Boolean = false,
@@ -187,7 +191,11 @@ object MazeGame {
     }
 
     fun applyAction(state: MazeState, action: MazeAction): MazeState {
-        if (state.completed || state.exitConfirmed) return state
+        if (action == MazeAction.REQUEST_EXIT && !state.exitConfirmed) return state.copy(
+            exitDialogVisible = true, exitSelection = MazeExitChoice.CANCEL,
+            message = "左看取消，右看确定，咬牙执行"
+        )
+        if (state.exitConfirmed) return state
         if (state.exitDialogVisible) {
             return when (action) {
                 MazeAction.LOOK_LEFT -> state.copy(
@@ -201,6 +209,13 @@ object MazeGame {
                 MazeAction.BITE -> confirmExitSelection(state)
                 else -> state.copy(message = "退出确认中：请左看或右看选择，咬牙确认")
             }
+        }
+        if (state.completed) return when (action) {
+            MazeAction.LOOK_LEFT -> state.copy(endSelection = MazeEndChoice.RESTART)
+            MazeAction.LOOK_RIGHT -> state.copy(endSelection = MazeEndChoice.EXIT)
+            MazeAction.BITE -> if (state.endSelection == MazeEndChoice.RESTART)
+                state.copy(restartRequested = true) else state.copy(exitConfirmed = true)
+            else -> state
         }
         if (action == MazeAction.REST) return state.copy(message = "静息：保持不动")
         if (action == MazeAction.LEFT_RIGHT || action == MazeAction.RIGHT_LEFT) {
@@ -276,6 +291,7 @@ object MazeGame {
     }
 
     fun MazeAction.displayName(): String = when (this) {
+        MazeAction.REQUEST_EXIT -> "退出"
         MazeAction.REST -> "静息"
         MazeAction.BITE -> "咬牙"
         MazeAction.LOOK_LEFT -> "左看"

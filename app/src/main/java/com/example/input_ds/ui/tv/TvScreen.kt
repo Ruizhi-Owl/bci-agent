@@ -1,4 +1,6 @@
 package com.example.input_ds.ui.tv
+import androidx.activity.compose.BackHandler
+import com.example.input_ds.ui.components.InputContextBoundary
 
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
@@ -146,11 +148,9 @@ fun TvScreen(scanIntervalMs: Long, onBack: () -> Unit) {
             when (signal) {
                 ControlSignal.LEFT_LOOK -> {
                     operationDirection = -1
-                    operationIndex = (operationIndex - 1 + TV_OPERATION_LABELS.size) % TV_OPERATION_LABELS.size
                 }
                 ControlSignal.RIGHT_LOOK -> {
                     operationDirection = 1
-                    operationIndex = (operationIndex + 1) % TV_OPERATION_LABELS.size
                 }
                 ControlSignal.BITE -> executeOperation(operationIndex)
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
@@ -169,6 +169,11 @@ fun TvScreen(scanIntervalMs: Long, onBack: () -> Unit) {
         }
     }
     val signalSink = remember { TvSignalSink { signalHandler.value(it) } }
+
+    InputContextBoundary(operationVisible, currentIndex)
+    BackHandler {
+        if (operationVisible) operationVisible = false else currentOnBack()
+    }
 
     DisposableEffect(signalSink) {
         TvInputBus.attach(signalSink)
@@ -217,12 +222,12 @@ fun TvScreen(scanIntervalMs: Long, onBack: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text("看电视", style = MaterialTheme.typography.headlineMedium)
                     Text(
-                        "左看、右看切换频道 · 咬牙打开电视操作 · 当前：${channel.name}",
+                        "左看上一频道，右看下一频道，咬牙打开菜单。当前：${channel.name}",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 TextButton(onClick = { operationVisible = true }) { Text("电视操作") }
-                TextButton(onClick = currentOnBack) { Text("返回首页") }
+                TextButton(onClick = currentOnBack) { Text("返回娱乐") }
             }
 
             Box(

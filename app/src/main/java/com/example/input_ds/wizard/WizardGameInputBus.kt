@@ -9,6 +9,16 @@ internal fun interface WizardGameSignalSink {
 /** Process-local handoff from the existing BCI controller to the foreground Godot game. */
 internal object WizardGameInputBus {
     @Volatile
+    var isForeground: Boolean = false
+        private set
+    var onFocusChanged: (() -> Unit)? = null
+
+    fun setForeground(value: Boolean) {
+        if (isForeground == value) return
+        isForeground = value
+        onFocusChanged?.invoke()
+    }
+    @Volatile
     private var sink: WizardGameSignalSink? = null
 
     fun attach(candidate: WizardGameSignalSink) {
@@ -20,6 +30,7 @@ internal object WizardGameInputBus {
     }
 
     fun dispatch(signal: ControlSignal): Boolean {
+        if (!isForeground) return false
         val current = sink ?: return false
         current.onSignal(signal)
         return true

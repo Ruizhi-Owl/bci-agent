@@ -90,7 +90,7 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("主页面", style = MaterialTheme.typography.headlineMedium)
+                Text("主页", style = MaterialTheme.typography.headlineMedium)
                 Text(
                     "光标自动轮转 ${if (selection.scanDirection < 0) "←" else "→"}  ·  " +
                         "左看/右看改变方向 · 咬牙选择",

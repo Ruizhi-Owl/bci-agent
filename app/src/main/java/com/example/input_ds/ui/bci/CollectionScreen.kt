@@ -400,7 +400,7 @@ fun CollectionScreen(
     Column(Modifier.fillMaxSize().auroraBackground().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("☰", style = MaterialTheme.typography.titleLarge)
-            Text("耳机设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("设备与模型", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(40.dp))
         }
         Spacer(Modifier.height(8.dp))

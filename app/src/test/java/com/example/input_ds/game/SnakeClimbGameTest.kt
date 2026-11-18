@@ -121,8 +121,8 @@ class SnakeClimbGameTest {
 
         val upward = SnakeClimbGame.applyAction(horizontal, SnakeAction.BITE)
         val prompt = SnakeClimbGame.applyAction(upward, SnakeAction.BITE)
-        val ignoredLook = SnakeClimbGame.applyAction(prompt, SnakeAction.LOOK_LEFT)
-        val chooseExit = SnakeClimbGame.applyAction(ignoredLook, SnakeAction.TICK)
+        val ignoredLook = SnakeClimbGame.applyAction(prompt, SnakeAction.TICK)
+        val chooseExit = SnakeClimbGame.applyAction(ignoredLook, SnakeAction.LOOK_RIGHT)
         val confirmed = SnakeClimbGame.applyAction(chooseExit, SnakeAction.BITE)
 
         assertEquals(SnakeDirection.UP, upward.direction)
@@ -133,11 +133,12 @@ class SnakeClimbGameTest {
     }
 
     @Test
-    fun gameOverChoicesCycleAutomaticallyAndIgnoreLooks() {
+    fun gameOverRequiresExplicitChoiceAndDoesNotChangeOnTimer() {
         val over = simpleState().copy(gameOver = true)
 
         val ignoredLook = SnakeClimbGame.applyAction(over, SnakeAction.LOOK_LEFT)
-        val cycled = SnakeClimbGame.applyAction(ignoredLook, SnakeAction.TICK)
+        assertEquals(ignoredLook, SnakeClimbGame.applyAction(ignoredLook, SnakeAction.TICK))
+        val cycled = SnakeClimbGame.applyAction(ignoredLook, SnakeAction.LOOK_RIGHT)
         val confirmed = SnakeClimbGame.applyAction(cycled, SnakeAction.BITE)
 
         assertEquals(SnakeEndChoice.RESTART, ignoredLook.gameOverSelection)

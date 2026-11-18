@@ -1,5 +1,7 @@
 package com.example.input_ds.ui.chess
 
+import androidx.activity.compose.BackHandler
+import com.example.input_ds.ui.components.LocalInputContextChanged
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.net.Uri
@@ -36,6 +38,15 @@ fun ChineseChessScreen(scanIntervalMs: Long, onBack: () -> Unit) {
     var activeWebView by remember { mutableStateOf<WebView?>(null) }
     var activeSignalSink by remember { mutableStateOf<ChineseChessWebSignalSink?>(null) }
     val currentOnBack by rememberUpdatedState(onBack)
+    val currentOnContextChanged by rememberUpdatedState(LocalInputContextChanged.current)
+    BackHandler {
+        val web = activeWebView
+        if (web == null) currentOnBack()
+        else web.evaluateJavascript(
+            "(() => { const game = window.inputDsChess; if (!game?.requestBack) return false; game.requestBack(); return true; })()"
+        ) { handled -> if (activeWebView === web && handled != "true") currentOnBack() }
+    }
+
 
     DisposableEffect(Unit) {
         onDispose {
@@ -63,7 +74,9 @@ fun ChineseChessScreen(scanIntervalMs: Long, onBack: () -> Unit) {
                     activeSignalSink = signalSink
                     ChineseChessInputBus.attach(signalSink)
                     addJavascriptInterface(
-                        ChineseChessHostBridge(this) { currentOnBack() },
+                        ChineseChessHostBridge(this,
+                            { if (activeWebView === this) currentOnBack() },
+                            { if (activeWebView === this) currentOnContextChanged() }),
                         "InputDsChessHost"
                     )
                     setBackgroundColor(Color.rgb(245, 239, 229))
@@ -151,7 +164,9 @@ private class ChineseChessWebSignalSink(
     }
 
     fun setScanInterval(value: Long) {
-        scanIntervalMs = value.coerceIn(1_100L, 3_000L)
+        val validated = value.coerceIn(1_100L, 3_000L)
+        if (validated == scanIntervalMs) return
+        scanIntervalMs = validated
         if (pageReady) sendScanInterval()
     }
 
@@ -180,8 +195,14 @@ private class ChineseChessWebSignalSink(
 
 private class ChineseChessHostBridge(
     private val webView: WebView,
-    private val onRequestExit: () -> Unit
+    private val onRequestExit: () -> Unit,
+    private val onInputContextChanged: () -> Unit
 ) {
+    @JavascriptInterface
+    fun inputContextChanged() {
+        webView.post { onInputContextChanged() }
+    }
+
     @JavascriptInterface
     fun requestExit() {
         webView.post { onRequestExit() }

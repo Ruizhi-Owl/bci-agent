@@ -1,7 +1,6 @@
 package com.example.input_ds.wizard
 
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import com.example.input_ds.model.ControlSignal
-import com.example.input_ds.model.KeyboardControlInput
 import com.example.input_ds.ui.components.FloatingControlBall
 import com.example.input_ds.ui.components.FloatingEegSignalSource
 import com.example.input_ds.ui.components.FloatingEegSignalWindow
@@ -21,6 +19,15 @@ import org.godotengine.godot.plugin.GodotPlugin
 
 /** Hosts the Godot game inside the same APK and process as the inputds application. */
 class WizardGameActivity : GodotActivity() {
+    override fun onResume() {
+        super.onResume()
+        WizardGameInputBus.setForeground(true)
+    }
+
+    override fun onPause() {
+        WizardGameInputBus.setForeground(false)
+        super.onPause()
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val floatingControls = ComposeView(this).apply {
@@ -50,14 +57,6 @@ class WizardGameActivity : GodotActivity() {
         )
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (currentFocus?.onCheckIsTextEditor() != true &&
-            KeyboardControlInput.dispatch(event) { WizardGameInputBus.dispatch(it) }
-        ) {
-            return true
-        }
-        return super.dispatchKeyEvent(event)
-    }
 
     override fun getCommandLine(): MutableList<String> =
         super.getCommandLine().toMutableList().apply {

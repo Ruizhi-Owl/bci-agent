@@ -16,6 +16,7 @@ enum class SnakeEndChoice {
 }
 
 enum class SnakeAction {
+    REQUEST_EXIT,
     TICK,
     LOOK_LEFT,
     LOOK_RIGHT,
@@ -94,6 +95,8 @@ object SnakeClimbGame {
         if (state.exitConfirmation) return handleExitAction(state, action)
 
         return when (action) {
+            SnakeAction.REQUEST_EXIT -> state.copy(exitConfirmation = true, exitSelected = false,
+                message = "左看取消，右看确定退出，咬牙执行")
             SnakeAction.TICK -> tick(state)
             SnakeAction.LOOK_LEFT -> changeHorizontalDirection(state, SnakeDirection.LEFT)
             SnakeAction.LOOK_RIGHT -> changeHorizontalDirection(state, SnakeDirection.RIGHT)
@@ -101,7 +104,7 @@ object SnakeClimbGame {
                 state.copy(
                     exitConfirmation = true,
                     exitSelected = false,
-                    message = "是否退出游戏？右看继续，左看退出，咬牙确认"
+                    message = "左看取消，右看确定退出，咬牙执行"
                 )
             } else {
                 state.copy(direction = SnakeDirection.UP, message = "咬牙：转向上方")
@@ -213,8 +216,9 @@ object SnakeClimbGame {
 
     private fun handleExitAction(state: SnakeClimbState, action: SnakeAction): SnakeClimbState =
         when (action) {
-            SnakeAction.TICK -> state.copy(exitSelected = !state.exitSelected)
-            SnakeAction.LOOK_LEFT, SnakeAction.LOOK_RIGHT -> state
+            SnakeAction.TICK -> state
+            SnakeAction.LOOK_LEFT -> state.copy(exitSelected = false)
+            SnakeAction.LOOK_RIGHT -> state.copy(exitSelected = true)
             SnakeAction.BITE -> if (state.exitSelected) {
                 state.copy(exitRequested = true)
             } else {
@@ -227,14 +231,9 @@ object SnakeClimbGame {
 
     private fun handleGameOverAction(state: SnakeClimbState, action: SnakeAction): SnakeClimbState =
         when (action) {
-            SnakeAction.TICK -> state.copy(
-                gameOverSelection = if (state.gameOverSelection == SnakeEndChoice.RESTART) {
-                    SnakeEndChoice.EXIT
-                } else {
-                    SnakeEndChoice.RESTART
-                }
-            )
-            SnakeAction.LOOK_LEFT, SnakeAction.LOOK_RIGHT -> state
+            SnakeAction.TICK -> state
+            SnakeAction.LOOK_LEFT -> state.copy(gameOverSelection = SnakeEndChoice.RESTART)
+            SnakeAction.LOOK_RIGHT -> state.copy(gameOverSelection = SnakeEndChoice.EXIT)
             SnakeAction.BITE -> if (state.gameOverSelection == SnakeEndChoice.EXIT) {
                 state.copy(exitRequested = true)
             } else {

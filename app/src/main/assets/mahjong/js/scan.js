@@ -19,6 +19,8 @@
       this.direction = direction < 0 ? -1 : 1;
       if (!this.candidates.length) {
         this.index = -1;
+      } else if (phase === "confirm") {
+        this.index = 0;
       } else if (Number.isInteger(startIndex)) {
         this.index = Math.max(0, Math.min(startIndex, this.candidates.length - 1));
       } else {
@@ -30,11 +32,15 @@
     setDirectionFromAction(action) {
       if (action === "look_left") this.direction = -1;
       if (action === "look_right") this.direction = 1;
+      if (this.phase === "confirm" && /^(look_left|look_right)$/.test(action)) {
+        this.index = action === "look_left" ? 0 : this.candidates.length - 1;
+      }
       return this.direction;
     }
 
     advance() {
       if (!this.candidates.length) return null;
+      if (this.phase === "confirm") return this.current();
       this.index = (this.index + this.direction + this.candidates.length) % this.candidates.length;
       return this.current();
     }

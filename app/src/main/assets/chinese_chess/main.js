@@ -170,7 +170,7 @@ class GameController {
             await this.aiMove();
         }
 
-        if (!this.chess.gameOver) this.startColumnScan();
+        if (!this.chess.gameOver && this.scanCursor.phase !== ScanPhase.CONFIRM) this.startColumnScan();
     }
 
     /**
@@ -351,7 +351,9 @@ class GameController {
     setScanInterval(intervalMs) {
         const parsed = Number(intervalMs);
         if (!Number.isFinite(parsed)) return;
-        this.scanIntervalMs = Math.max(1100, Math.min(3000, Math.round(parsed)));
+        const validated = Math.max(1100, Math.min(3000, Math.round(parsed)));
+        if (validated === this.scanIntervalMs) return;
+        this.scanIntervalMs = validated;
         this.restartScanTimer();
     }
 
@@ -380,6 +382,7 @@ class GameController {
                 columns.push({kind: 'column', x});
             }
         }
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(
             ScanPhase.COLUMN,
             boardScanCandidates(columns, this.scanCursor.direction)
@@ -406,6 +409,7 @@ class GameController {
             this.startColumnScan();
             return;
         }
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(
             ScanPhase.ROW,
             boardScanCandidates(pieces, this.scanCursor.direction)
@@ -442,6 +446,7 @@ class GameController {
             : [...captureMoves, ...quietMoves];
         const legalMoves = orderedMoves
             .map(move => ({kind: 'move', x: move.x, y: move.y}));
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(
             ScanPhase.TARGET,
             boardScanCandidates(legalMoves, this.scanCursor.direction)
@@ -456,6 +461,7 @@ class GameController {
         if (this.scanCursor.phase !== ScanPhase.MENU && this.scanCursor.phase !== ScanPhase.CONFIRM) {
             this.boardScanSnapshot = this.scanCursor.snapshot();
         }
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(
             ScanPhase.MENU,
             operationScanCandidates(this.navigationLevel, this.scanCursor.direction)
@@ -493,6 +499,7 @@ class GameController {
             actions.push({kind: 'undo', label: '悔棋'});
         }
         actions.push({kind: 'exit', label: '退出'});
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(ScanPhase.RESULT, actions, 'new_game');
         this.syncNavigationButtons();
         this.restartScanTimer();
@@ -503,15 +510,17 @@ class GameController {
         this.pendingConfirmedAction = action;
         this.pendingActionReturnMode = returnMode;
         this.showActionConfirmModal(action);
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.setPhase(ScanPhase.CONFIRM, [
             {kind: 'cancel', label: '返回'},
             {kind: 'confirm', label: '确定'}
-        ], 'confirm');
+        ], 'cancel');
         this.restartScanTimer();
         this.renderScanFocus();
     }
 
     pauseBciScan(message = '扫描已暂停') {
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.pause();
         if (this.scanTimer) window.clearInterval(this.scanTimer);
         this.scanTimer = null;
@@ -543,7 +552,7 @@ class GameController {
         const gameOverScan = this.chess.gameOver && (
             this.scanCursor.phase === ScanPhase.RESULT || this.scanCursor.phase === ScanPhase.CONFIRM
         );
-        if ((!this.canScan() && !gameOverScan) || this.scanCursor.phase === ScanPhase.PAUSED) return;
+        if ((!this.canScan() && !gameOverScan) || [ScanPhase.PAUSED, ScanPhase.CONFIRM].includes(this.scanCursor.phase)) return;
         this.scanTimer = window.setInterval(() => {
             this.scanCursor.advance();
             this.renderScanFocus();
@@ -554,7 +563,7 @@ class GameController {
         const gameOverScan = this.chess.gameOver && (
             this.scanCursor.phase === ScanPhase.RESULT || this.scanCursor.phase === ScanPhase.CONFIRM
         );
-        if (!this.canScan() && !gameOverScan) return;
+        if (!this.canScan() && !gameOverScan && this.scanCursor.phase !== ScanPhase.CONFIRM) return;
         if (action === 'look_left' || action === 'look_right') {
             this.scanCursor.setDirectionFromAction(action);
             this.restartScanTimer();
@@ -639,7 +648,9 @@ class GameController {
         if (!item) return;
 
         if (directionEl) {
-            directionEl.textContent = this.scanCursor.direction < 0 ? '向左轮转' : '向右轮转';
+            directionEl.textContent = this.scanCursor.phase === ScanPhase.CONFIRM
+                ? '左看取消，右看确定，咬牙执行'
+                : this.scanCursor.direction < 0 ? '向左轮转' : '向右轮转';
         }
         const board = document.getElementById('chessboard');
 
@@ -728,6 +739,7 @@ class GameController {
         this.pendingConfirmedAction = null;
         this.hideActionConfirmModal();
         this.boardScanSnapshot = null;
+        window.InputDsChessHost?.inputContextChanged?.();
         this.scanCursor.restore(snapshot);
         this.navigationLevel = snapshot.phase;
         this.syncNavigationButtons();
@@ -773,6 +785,14 @@ class GameController {
 
     pieceLabel(piece) {
         return ({K: '帅', A: '仕', B: '相', N: '马', R: '车', C: '炮', P: '兵'})[piece] || piece;
+    }
+
+    requestBack() {
+        if (this.scanCursor.phase === ScanPhase.CONFIRM) this.cancelPendingAction();
+        else if (this.scanCursor.phase === ScanPhase.MENU && this.boardScanSnapshot) this.returnToBoardSelection();
+        else if (this.scanCursor.phase === ScanPhase.TARGET) this.startRowScan(this.selectedColumn);
+        else if (this.scanCursor.phase === ScanPhase.ROW) this.startColumnScan();
+        else this.startTouchConfirmScan('exit');
     }
 
     requestExit() {
@@ -897,6 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const controller = new GameController();
     window.inputDsChess = {
         handleAction: action => controller.handleBciAction(action),
+        requestBack: () => controller.requestBack(),
         setScanInterval: intervalMs => controller.setScanInterval(intervalMs)
     };
     window.addEventListener('beforeunload', () => controller.pauseBciScan('页面关闭'));

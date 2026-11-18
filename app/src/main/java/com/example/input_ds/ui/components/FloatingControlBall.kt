@@ -160,7 +160,7 @@ fun FloatingControlBall(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    if (expanded) "拖动" else "控制",
+                    if (expanded) "拖动" else "模拟",
                     color = Color(0xFF102217),
                     fontSize = if (expanded) 14.sp else 16.sp,
                     fontWeight = FontWeight.Black,

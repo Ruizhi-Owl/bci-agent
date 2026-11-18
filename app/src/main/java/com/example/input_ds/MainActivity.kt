@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -15,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.example.input_ds.ui.components.LocalInputContextChanged
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.input_ds.bci.BciController
 import com.example.input_ds.bci.NaoyunBleManager
+import com.example.input_ds.calibration.CalibrationMode
+import com.example.input_ds.calibration.ScanCalibrationViewModel
+import com.example.input_ds.ui.calibration.ScanCalibrationScreen
 import com.example.input_ds.chess.ChineseChessInputBus
 import com.example.input_ds.data.CharacterDictionary
 import com.example.input_ds.data.CommonPhraseUsage
@@ -47,7 +51,8 @@ import com.example.input_ds.model.EntertainmentHubModule
 import com.example.input_ds.model.EntertainmentHubSelectionState
 import com.example.input_ds.model.HomeModule
 import com.example.input_ds.model.HomeSelectionState
-import com.example.input_ds.model.KeyboardControlInput
+import com.example.input_ds.model.InteractionRules
+import com.example.input_ds.model.parentDestination
 import com.example.input_ds.music.MusicInputBus
 import com.example.input_ds.settings.AppSettingsInputBus
 import com.example.input_ds.personalization.ClassificationProtocol
@@ -83,7 +88,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var bleManager: NaoyunBleManager
     private var bciController: BciController? = null
     private var inputViewModel: InputMethodViewModel? = null
+    private var scanCalibrationViewModel: ScanCalibrationViewModel? = null
+    private var calibrationReturn = AppDestination.INPUT_METHOD
     private var attemptedModelIdentity: String? = null
+    private var mainForeground = false
 
     private val destination = mutableStateOf(AppDestination.HOME)
     private val homeSelection = mutableStateOf(HomeSelectionState())
@@ -120,6 +128,12 @@ class MainActivity : ComponentActivity() {
         LanguageModel.init(applicationContext)
         UserDictionary.init(applicationContext)
         bleManager = NaoyunBleManager(applicationContext)
+        WizardGameInputBus.onFocusChanged = {
+            runOnUiThread {
+                bciController?.invalidatePendingCommands()
+                updateBciCommandDelivery()
+            }
+        }
         FloatingEegSignalSource.attach(bleManager)
         TrainingWorkScheduler.resumeIncomplete(applicationContext)
         floatingBallVisible.value = AppUiSettings.readFloatingBallVisible(applicationContext)
@@ -131,12 +145,16 @@ class MainActivity : ComponentActivity() {
             InputDSTheme {
                 val vm: InputMethodViewModel = viewModel()
                 inputViewModel = vm
+                scanCalibrationViewModel = viewModel<ScanCalibrationViewModel>()
                 val bleState by bleManager.state.collectAsState()
 
                 LaunchedEffect(bleState) {
                     if (bleState != NaoyunBleManager.State.READY && headsetControlEnabled.value) {
                         setHeadsetControlEnabled(false)
                     }
+                    scanCalibrationViewModel?.setHeadsetReady(
+                        bleState == NaoyunBleManager.State.READY && headsetControlEnabled.value
+                    )
                     if (bleState == NaoyunBleManager.State.READY) {
                         UserModelManager.activePreset(applicationContext)?.let { preset ->
                             bleManager.setPreprocessing(preset.displaySteps())
@@ -160,10 +178,15 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Box(Modifier.fillMaxSize()) {
-                    AppContent(vm = vm, bleState = bleState)
+                    CompositionLocalProvider(LocalInputContextChanged provides {
+                        bciController?.invalidatePendingCommands()
+                    }) {
+                        AppContent(vm = vm, bleState = bleState)
+                    }
                     FloatingEegSignalWindow(
                         bleManager = bleManager,
                         visible = destination.value != AppDestination.HOME &&
+                            destination.value != AppDestination.SCAN_CALIBRATION &&
                             destination.value != AppDestination.WIZARD_GAME
                     )
                     FloatingControlBall(
@@ -177,36 +200,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val configuringHeadset = destination.value == AppDestination.SETTINGS ||
-            destination.value == AppDestination.DEVICE_STATUS ||
-            destination.value == AppDestination.COLLECTION
-        if (!configuringHeadset && currentFocus?.onCheckIsTextEditor() != true &&
-            KeyboardControlInput.dispatch(event, ::routeSignal)
-        ) {
-            return true
-        }
-        return super.dispatchKeyEvent(event)
+
+    override fun onPause() {
+        mainForeground = false
+        bciController?.invalidatePendingCommands()
+        updateBciCommandDelivery()
+        scanCalibrationViewModel?.suspendPractice()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mainForeground = true
+        bciController?.invalidatePendingCommands()
+        updateBciCommandDelivery()
+        if (destination.value == AppDestination.SCAN_CALIBRATION) scanCalibrationViewModel?.activate()
     }
 
     @Composable
     private fun AppContent(vm: InputMethodViewModel, bleState: NaoyunBleManager.State) {
+        val inputState by vm.state.collectAsState()
         if (destination.value != AppDestination.HOME &&
             destination.value != AppDestination.DEVICE_STATUS
         ) {
             BackHandler {
-                val parent = when (destination.value) {
-                    AppDestination.ENTERTAINMENT -> AppDestination.HOME
-                    AppDestination.ASYNC_MAZE,
-                    AppDestination.SNAKE_CLIMB,
-                    AppDestination.WIZARD_GAME,
-                    AppDestination.CHINESE_CHESS,
-                    AppDestination.DOUDIZHU,
-                    AppDestination.MAHJONG,
-                    AppDestination.TV,
-                    AppDestination.MUSIC -> AppDestination.ENTERTAINMENT
-                    else -> AppDestination.HOME
+                if (destination.value == AppDestination.SCAN_CALIBRATION) {
+                    scanCalibrationViewModel?.discard()
+                    return@BackHandler
                 }
+                val parent = destination.value.parentDestination() ?: AppDestination.HOME
                 navigateTo(parent)
             }
         }
@@ -214,7 +236,7 @@ class MainActivity : ComponentActivity() {
         when (destination.value) {
             AppDestination.HOME -> HomeScreen(
                 selection = homeSelection.value,
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 bleManager = bleManager,
                 onRequestPermissions = ::requestBluetoothPermissions,
                 onSelect = { module ->
@@ -230,7 +252,7 @@ class MainActivity : ComponentActivity() {
 
             AppDestination.ENTERTAINMENT -> EntertainmentScreen(
                 selection = entertainmentSelection.value,
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onSelect = { module ->
                     entertainmentSelection.value = entertainmentSelection.value.copy(
                         selectedIndex = EntertainmentHubModule.entries.indexOf(module)
@@ -244,6 +266,13 @@ class MainActivity : ComponentActivity() {
 
             AppDestination.INPUT_METHOD -> InputMethodPage(vm)
 
+            AppDestination.SCAN_CALIBRATION -> scanCalibrationViewModel?.let { calibration ->
+                ScanCalibrationScreen(calibration,
+                    headsetReady = bleState == NaoyunBleManager.State.READY && headsetControlEnabled.value,
+                    onSave = vm::setScanInterval,
+                    onExit = { navigateTo(calibrationReturn) })
+            }
+
             AppDestination.ASYNC_MAZE -> MazeScreen(
                 state = mazeState.value,
                 controlStatus = bciStatus.value,
@@ -255,7 +284,7 @@ class MainActivity : ComponentActivity() {
 
             AppDestination.SNAKE_CLIMB -> SnakeClimbScreen(
                 state = snakeState.value,
-                moveIntervalMs = vm.state.value.scanIntervalMs,
+                moveIntervalMs = inputState.scanIntervalMs,
                 onAction = ::applySnakeAction,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
@@ -267,32 +296,32 @@ class MainActivity : ComponentActivity() {
             }
 
             AppDestination.CHINESE_CHESS -> ChineseChessScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
 
             AppDestination.DOUDIZHU -> DoudizhuScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
 
             AppDestination.MAHJONG -> MahjongScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
 
             AppDestination.TV -> TvScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
 
             AppDestination.MUSIC -> MusicScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onBack = { navigateTo(AppDestination.ENTERTAINMENT) }
             )
 
             AppDestination.APP_SETTINGS -> AppSettingsScreen(
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 floatingBallVisible = floatingBallVisible.value,
                 headsetControlEnabled = headsetControlEnabled.value,
                 onFloatingBallVisibleChange = { visible ->
@@ -300,12 +329,13 @@ class MainActivity : ComponentActivity() {
                     AppUiSettings.writeFloatingBallVisible(applicationContext, visible)
                 },
                 onHeadsetControlEnabledChange = ::setHeadsetControlEnabled,
+                onScanCalibration = ::openScanCalibration,
                 onBack = { navigateTo(AppDestination.HOME) }
             )
 
             AppDestination.SETTINGS -> CollectionScreen(
                 bleManager = bleManager,
-                scanIntervalMs = vm.state.value.scanIntervalMs,
+                scanIntervalMs = inputState.scanIntervalMs,
                 onScanIntervalChange = vm::setScanInterval,
                 onTrainingActivated = {
                     restartBciController()
@@ -325,13 +355,17 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun InputMethodPage(vm: InputMethodViewModel) {
         val state by vm.state.collectAsState()
+        BackHandler {
+            if (!vm.navigateBack()) navigateTo(AppDestination.HOME)
+            bciController?.invalidatePendingCommands()
+        }
         AuroraBackground {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                Text(
-                    "实时沟通",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.headlineMedium
-                )
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("实时沟通", Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+                    TextButton(onClick = ::openScanCalibration) { Text("校准速度") }
+                }
                 Box(Modifier.weight(1f)) {
                     MainScreen(
                         state = state,
@@ -382,8 +416,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun navigateTo(target: AppDestination) {
+        if (target != destination.value) bciController?.invalidatePendingCommands()
+        if (destination.value == AppDestination.SCAN_CALIBRATION && target != destination.value) {
+            scanCalibrationViewModel?.discard()
+            scanCalibrationViewModel?.suspendPractice()
+        }
         destination.value = target
         updateBciCommandDelivery()
+    }
+
+    private fun openScanCalibration() {
+        val vm = inputViewModel ?: return
+        calibrationReturn = destination.value
+        scanCalibrationViewModel?.open(vm.state.value.scanIntervalMs,
+            bleManager.state.value == NaoyunBleManager.State.READY && headsetControlEnabled.value)
+        navigateTo(AppDestination.SCAN_CALIBRATION)
     }
 
     private fun setHeadsetControlEnabled(enabled: Boolean) {
@@ -401,20 +448,32 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateBciCommandDelivery() {
-        val targetAcceptsCommands = destination.value != AppDestination.DEVICE_STATUS &&
-            destination.value != AppDestination.COLLECTION &&
-            destination.value != AppDestination.SETTINGS
+        val targetAcceptsCommands = InteractionRules.acceptsHeadsetCommands(
+            destination.value, mainForeground, WizardGameInputBus.isForeground
+        )
         bciController?.setCommandDeliveryEnabled(
             headsetControlEnabled.value && targetAcceptsCommands
         )
     }
 
     private fun routeHeadsetSignal(signal: ControlSignal) {
-        if (headsetControlEnabled.value) routeSignal(signal)
+        if (!headsetControlEnabled.value || !InteractionRules.acceptsHeadsetCommands(
+                destination.value, mainForeground, WizardGameInputBus.isForeground)) return
+        if (destination.value == AppDestination.SCAN_CALIBRATION) {
+            scanCalibrationViewModel?.handleSignal(signal, CalibrationMode.HEADSET)
+        } else routeSignal(signal)
     }
 
     private fun routeSignal(signal: ControlSignal) {
-        if (WizardGameInputBus.dispatch(signal)) return
+        if (destination.value == AppDestination.WIZARD_GAME) {
+            WizardGameInputBus.dispatch(signal)
+            return
+        }
+        if (!mainForeground) return
+        if (destination.value == AppDestination.SCAN_CALIBRATION) {
+            scanCalibrationViewModel?.handleSignal(signal, CalibrationMode.SIMULATION)
+            return
+        }
         when (destination.value) {
             AppDestination.HOME -> when (signal) {
                 ControlSignal.LEFT_LOOK -> homeSelection.value = homeSelection.value.changeDirection(-1)
@@ -433,6 +492,7 @@ class MainActivity : ComponentActivity() {
                 ControlSignal.LEFT_RIGHT, ControlSignal.RIGHT_LEFT -> Unit
             }
             AppDestination.INPUT_METHOD -> inputViewModel?.handleSignal(signal)
+            AppDestination.SCAN_CALIBRATION -> Unit
             AppDestination.ASYNC_MAZE -> {
                 val action = when (signal) {
                     ControlSignal.LEFT_LOOK -> MazeAction.LOOK_LEFT
@@ -536,6 +596,7 @@ class MainActivity : ComponentActivity() {
     private fun applyMazeAction(action: MazeAction) {
         val nextState = MazeGame.applyAction(mazeState.value, action)
         mazeState.value = nextState
+        if (nextState.restartRequested) resetMazeForActiveModel()
         if (nextState.exitConfirmed) navigateTo(AppDestination.ENTERTAINMENT)
     }
 
@@ -577,6 +638,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        WizardGameInputBus.onFocusChanged = null
         FloatingEegSignalSource.detach(bleManager)
         stopBciController()
         bleManager.disconnect()

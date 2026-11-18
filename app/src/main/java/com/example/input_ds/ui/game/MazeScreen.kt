@@ -18,6 +18,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.BackHandler
+import com.example.input_ds.model.InteractionRules
+import com.example.input_ds.game.MazeEndChoice
+import com.example.input_ds.ui.components.InputContextBoundary
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -61,11 +65,10 @@ fun MazeScreen(
     onExitDecision: (MazeExitChoice) -> Unit,
     onReset: () -> Unit
 ) {
-    LaunchedEffect(state.completed) {
-        if (state.completed) {
-            delay(1_500)
-            onReset()
-        }
+    InputContextBoundary(state.exitDialogVisible, state.completed)
+    BackHandler {
+        if (state.exitDialogVisible) onExitDecision(MazeExitChoice.CANCEL)
+        else onAction(MazeAction.REQUEST_EXIT)
     }
 
     Column(
@@ -74,7 +77,10 @@ fun MazeScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(12.dp)
     ) {
-        Text("迷宫游戏", style = MaterialTheme.typography.headlineMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("迷宫游戏", Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
+            TextButton(onClick = { onAction(MazeAction.REQUEST_EXIT) }) { Text("返回娱乐") }
+        }
         Spacer(Modifier.height(12.dp))
         GlassPanel(Modifier.fillMaxSize()) {
             GlassPanel(
@@ -97,6 +103,22 @@ fun MazeScreen(
             selection = state.exitSelection,
             onDecision = onExitDecision,
             onAction = onAction
+        )
+    } else if (state.completed) {
+        AlertDialog(
+            onDismissRequest = onBack,
+            title = { Text("迷宫完成") },
+            text = { Text("左看选择再来一局，右看选择返回娱乐，咬牙确认") },
+            dismissButton = {
+                TextButton(onClick = onReset) {
+                    Text(if (state.endSelection == MazeEndChoice.RESTART) "● 再来一局" else "再来一局")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onBack) {
+                    Text(if (state.endSelection == MazeEndChoice.EXIT) "● 返回娱乐" else "返回娱乐")
+                }
+            }
         )
     }
 }
@@ -123,7 +145,7 @@ private fun ExitConfirmationDialog(
         onDismissRequest = { onDecision(MazeExitChoice.CANCEL) },
         title = { Text("确认退出迷宫？") },
         text = {
-            Text("左看选择取消，右看选择确认退出，咬牙确认。")
+            Text(InteractionRules.CONFIRM_HINT)
         },
         dismissButton = {
             TextButton(onClick = { onDecision(MazeExitChoice.CANCEL) }) {

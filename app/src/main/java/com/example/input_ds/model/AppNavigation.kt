@@ -4,6 +4,7 @@ enum class AppDestination {
     HOME,
     ENTERTAINMENT,
     INPUT_METHOD,
+    SCAN_CALIBRATION,
     ASYNC_MAZE,
     SNAKE_CLIMB,
     WIZARD_GAME,
@@ -23,10 +24,10 @@ enum class HomeModule(
     val displayName: String,
     val scanEnabled: Boolean = true
 ) {
-    APP_SETTINGS(AppDestination.APP_SETTINGS, "设置"),
+    APP_SETTINGS(AppDestination.APP_SETTINGS, "应用设置"),
     REALTIME_COMMUNICATION(AppDestination.INPUT_METHOD, "实时沟通"),
     ENTERTAINMENT(AppDestination.ENTERTAINMENT, "娱乐"),
-    HEADSET_SETTINGS(AppDestination.SETTINGS, "耳机设置", scanEnabled = false)
+    HEADSET_SETTINGS(AppDestination.SETTINGS, "设备与模型", scanEnabled = false)
 }
 
 data class HomeSelectionState(

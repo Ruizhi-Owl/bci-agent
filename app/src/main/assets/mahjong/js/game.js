@@ -204,7 +204,7 @@
         this.requestConfirmation({
           kind: "exit",
           title: "确定要退出麻将游戏吗？",
-          detail: "确定后将返回 APP 主页面。",
+          detail: "确定后将返回娱乐。",
           execute: () => this.requestExit()
         });
       });
@@ -215,7 +215,7 @@
         this.requestConfirmation({
           kind: "exit",
           title: "确定要退出麻将游戏吗？",
-          detail: "确定后将返回 APP 主页面。",
+          detail: "确定后将返回娱乐。",
           execute: () => this.requestExit()
         });
       });
@@ -697,12 +697,15 @@
     setScanInterval(value) {
       const parsed = Number(value);
       if (!Number.isFinite(parsed)) return;
+      const validated = Math.max(1100, Math.min(3000, Math.round(parsed)));
+      if (validated === this.scan.intervalMs) return;
       const firstDwellActive = this.scan.firstDwellUntil > Date.now();
-      this.scan.intervalMs = Math.max(1100, Math.min(3000, Math.round(parsed)));
+      this.scan.intervalMs = validated;
       this.restartScanTimer(firstDwellActive ? this.scan.intervalMs * 2 : undefined);
     }
 
     setScanPhase(phase, candidates, direction, startIndex, initialDelayMs) {
+      window.InputDsMahjongHost?.inputContextChanged?.();
       this.scan.cursor.setPhase(phase, candidates, direction, startIndex);
       this.restartScanTimer(initialDelayMs);
       this.renderBciFocus();
@@ -718,7 +721,7 @@
         window.clearInterval(this.scan.timer);
       }
       this.scan.timer = null;
-      if (!this.scan.cursor.candidates.length) return;
+      if (!this.scan.cursor.candidates.length || this.scan.cursor.phase === "confirm") return;
       const advance = () => {
         this.scan.cursor.advance();
         this.renderBciFocus();
@@ -859,6 +862,7 @@
       const saved = this.scan.settingsReturn;
       this.scan.settingsReturn = null;
       if (saved && saved.signature === this.gameSignature()) {
+        window.InputDsMahjongHost?.inputContextChanged?.();
         this.scan.cursor.restore(saved.cursor);
         this.restartScanTimer();
         this.renderBciFocus();
@@ -875,8 +879,8 @@
       this.el.confirmDetail.textContent = request.detail || "咬牙选择当前高亮项。";
       this.el.confirm.classList.remove("hidden");
       this.setScanPhase("confirm", [
-        { kind: "confirm_yes", label: "确定" },
-        { kind: "confirm_no", label: "返回选择" }
+        { kind: "confirm_no", label: "取消" },
+        { kind: "confirm_yes", label: "确定" }
       ], 1, 0);
     }
 
@@ -891,6 +895,7 @@
       const saved = this.scan.confirmReturn;
       this.scan.confirmReturn = null;
       if (saved) {
+        window.InputDsMahjongHost?.inputContextChanged?.();
         this.scan.cursor.restore(saved);
         this.restartScanTimer();
         this.renderBciFocus();
@@ -961,7 +966,7 @@
         this.requestConfirmation({
           kind: "exit",
           title: "确定要退出麻将游戏吗？",
-          detail: "确定后将返回 APP 主页面。",
+          detail: "确定后将返回娱乐。",
           execute: () => this.requestExit()
         });
       } else if (candidate.kind === "again") this.startRound();
@@ -1194,6 +1199,15 @@
     window.mahjongGame = new MahjongGame();
     window.inputDsMahjong = {
       handleAction: function (action) { window.mahjongGame.handleBciAction(action); },
+      requestBack: function () {
+        const game = window.mahjongGame;
+        if (!game.el.confirm.classList.contains("hidden")) game.cancelConfirmation();
+        else if (!game.el.settings.classList.contains("hidden")) game.closeSettings();
+        else game.requestConfirmation({
+          title: "确定要退出麻将游戏吗？", detail: "确定后将返回娱乐。",
+          execute: () => game.requestExit()
+        });
+      },
       setScanInterval: function (value) { window.mahjongGame.setScanInterval(value); }
     };
   });
